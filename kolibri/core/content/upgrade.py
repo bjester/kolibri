@@ -134,21 +134,17 @@ def update_num_coach_contents():
     bridge = Bridge(app_name=KolibriContentConfig.label)
 
     ContentNodeClass = bridge.get_class(ContentNode)
-
     ContentNodeTable = bridge.get_table(ContentNode)
-
-    connection = bridge.get_connection()
 
     child = ContentNodeTable.alias()
 
     logger.info("Updating num_coach_content on existing channels")
 
     # start a transaction
-
-    trans = connection.begin()
+    bridge.begin_transaction()
 
     # Update all leaf ContentNodes to have num_coach_content to 1 or 0
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             # That are not topics
@@ -187,7 +183,7 @@ def update_num_coach_contents():
         for level in range(node_depth, 0, -1):
 
             # Only modify topic availability here
-            connection.execute(
+            bridge.session.execute(
                 ContentNodeTable.update()
                 .where(
                     and_(
@@ -203,8 +199,7 @@ def update_num_coach_contents():
             )
 
     # commit the transaction
-    trans.commit()
-
+    bridge.commit_transaction()
     bridge.end()
 
 
@@ -217,23 +212,18 @@ def update_on_device_resources():
     those that were imported before annotations were performed
     """
     bridge = Bridge(app_name=KolibriContentConfig.label)
-
     ContentNodeClass = bridge.get_class(ContentNode)
-
     ContentNodeTable = bridge.get_table(ContentNode)
-
-    connection = bridge.get_connection()
 
     child = ContentNodeTable.alias()
 
     logger.info("Updating on_device_resource on existing channels")
 
     # start a transaction
-
-    trans = connection.begin()
+    bridge.begin_transaction()
 
     # Update all leaf ContentNodes to have on_device_resource to 1 or 0
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             # That are not topics
@@ -272,7 +262,7 @@ def update_on_device_resources():
         for level in range(node_depth, 0, -1):
 
             # Only modify topic availability here
-            connection.execute(
+            bridge.session.execute(
                 ContentNodeTable.update()
                 .where(
                     and_(
@@ -288,6 +278,6 @@ def update_on_device_resources():
             )
 
     # commit the transaction
-    trans.commit()
+    bridge.commit_transaction()
 
     bridge.end()

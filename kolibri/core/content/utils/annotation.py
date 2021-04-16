@@ -257,8 +257,6 @@ def set_leaf_nodes_invisible(channel_id, node_ids=None, exclude_node_ids=None):
     """
     bridge = Bridge(app_name=CONTENT_APP_NAME)
 
-    connection = bridge.get_connection()
-
     # Start a counter for the while loop
     min_boundary = 1
 
@@ -273,6 +271,9 @@ def set_leaf_nodes_invisible(channel_id, node_ids=None, exclude_node_ids=None):
         )
     )
 
+    bridge.begin_transaction()
+    bridge.acquire_lock()
+
     while min_boundary < max_rght:
         batch_statement = _create_batch_update_statement(
             bridge,
@@ -284,12 +285,14 @@ def set_leaf_nodes_invisible(channel_id, node_ids=None, exclude_node_ids=None):
         )
 
         # Execute the update for this batch
-        connection.execute(
+        bridge.session.execute(
             batch_statement.values(available=False).execution_options(autocommit=True)
         )
 
         min_boundary += dynamic_chunksize
 
+    bridge.release_lock()
+    bridge.commit_transaction()
     bridge.end()
 
 
@@ -318,8 +321,6 @@ def set_leaf_node_availability_from_local_file_availability(
     # SQL Alchemy reference to the localfile table which tracks
     # information about the files on disk, such as availability
     LocalFileTable = bridge.get_table(LocalFile)
-
-    connection = bridge.get_connection()
 
     # This statement defines the update condition for the contentnode
     # running exists on this (as it is used below) will produce either
@@ -363,6 +364,9 @@ def set_leaf_node_availability_from_local_file_availability(
         )
     )
 
+    bridge.begin_transaction()
+    bridge.acquire_lock()
+
     while min_boundary < max_rght:
         batch_statement = _create_batch_update_statement(
             bridge,
@@ -374,13 +378,15 @@ def set_leaf_node_availability_from_local_file_availability(
         )
 
         # Execute the update for this batch
-        connection.execute(
+        bridge.session.execute(
             batch_statement.values(
                 available=exists(contentnode_statement)
             ).execution_options(autocommit=True)
         )
         min_boundary += dynamic_chunksize
 
+    bridge.release_lock()
+    bridge.commit_transaction()
     bridge.end()
 
 
@@ -408,12 +414,10 @@ def mark_local_files_availability(checksums, availability, destination=None):
             )
         )
 
-        connection = bridge.get_connection()
-
-        trans = connection.begin()
+        bridge.begin_transaction()
 
         for i in range(0, len(checksums), CHUNKSIZE):
-            connection.execute(
+            bridge.session.execute(
                 LocalFileTable.update()
                 .where(
                     filter_by_checksums(
@@ -423,8 +427,7 @@ def mark_local_files_availability(checksums, availability, destination=None):
                 .values(available=availability)
             )
 
-        trans.commit()
-
+        bridge.commit_transaction()
         bridge.end()
 
 
@@ -486,9 +489,7 @@ def set_local_file_availability_from_disk(checksums=None, destination=None):
         )
         query = query.where(LocalFileTable.c.id == checksums)
 
-    connection = bridge.get_connection()
-
-    files = connection.execute(query).fetchall()
+    files = bridge.session.execute(query).fetchall()
 
     checksums_to_set_available, checksums_to_set_unavailable = _check_file_availability(
         files
@@ -506,10 +507,7 @@ def recurse_annotation_up_tree(channel_id):
     bridge = Bridge(app_name=CONTENT_APP_NAME)
 
     ContentNodeClass = bridge.get_class(ContentNode)
-
     ContentNodeTable = bridge.get_table(ContentNode)
-
-    connection = bridge.get_connection()
 
     node_depth = (
         bridge.session.query(func.max(ContentNodeClass.level))
@@ -525,14 +523,13 @@ def recurse_annotation_up_tree(channel_id):
 
     child = ContentNodeTable.alias()
 
-    # start a transaction
-
-    trans = connection.begin()
+    bridge.begin_transaction()
+    bridge.acquire_lock()
     start = datetime.datetime.now()
 
     # Update all leaf ContentNodes to have num_coach_content to 1 or 0
     # Update all leaf ContentNodes to have on_device_resources to 1 or 0
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             and_(
@@ -549,7 +546,7 @@ def recurse_annotation_up_tree(channel_id):
     )
 
     # Before starting set availability to False on all topics.
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             and_(
@@ -620,7 +617,7 @@ def recurse_annotation_up_tree(channel_id):
             )
         )
         # Only modify topic availability here
-        connection.execute(
+        bridge.session.execute(
             ContentNodeTable.update()
             .where(
                 and_(
@@ -641,7 +638,8 @@ def recurse_annotation_up_tree(channel_id):
         )
 
     # commit the transaction
-    trans.commit()
+    bridge.release_lock()
+    bridge.commit_transaction()
 
     elapsed = datetime.datetime.now() - start
     logger.debug(

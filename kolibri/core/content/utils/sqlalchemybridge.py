@@ -27,6 +27,8 @@ from kolibri.core.mixins import UUIDValidationError
 from kolibri.core.mixins import validate_uuids
 from kolibri.core.sqlite.pragmas import CONNECTION_PRAGMAS
 from kolibri.core.sqlite.pragmas import START_PRAGMAS
+from kolibri.core.utils.lock import get_lock_operation
+from kolibri.core.utils.lock import SQLAlchemyLockConnection
 
 
 def set_sqlite_connection_pragma(dbapi_connection, connection_record):
@@ -329,6 +331,9 @@ class Bridge(object):
         # We are using scoped sessions, so should always return the same session
         # in the same thread
         self.session, self.engine = make_session(self.connection_string)
+        self.lock = get_lock_operation(
+            SQLAlchemyLockConnection(self.session, self.engine)
+        )
 
         if schema_version is not None and sqlite_file_path is not None:
             # In this case we are not using the default database, nor have
@@ -341,7 +346,29 @@ class Bridge(object):
             # change in the schema beyond creating tables.
             self.Base.metadata.create_all(self.engine)
 
-        self.connection = None
+    def begin_transaction(self):
+        if not self.session.transaction:
+            self.session.begin()
+
+    def acquire_lock(self):
+        self.lock.execute()
+
+    def release_lock(self):
+        self.lock.revert()
+
+    def rollback_transaction(self):
+        self.session.rollback()
+
+    def commit_transaction(self):
+        self.session.commit()
+
+    def end(self):
+        # Clean up session
+        if self.session.transaction:
+            # by default, don't commit anything unless explicitly done
+            self.rollback_transaction()
+        self.session.close()
+        self.engine.dispose()
 
     def get_class(self, DjangoModel):
         return get_class(DjangoModel, self.Base)
@@ -352,22 +379,6 @@ class Bridge(object):
         https://docs.sqlalchemy.org/en/13/orm/extensions/declarative/table_config.html#using-a-hybrid-approach-with-table
         """
         return self.get_class(DjangoModel).__table__
-
-    def get_raw_connection(self):
-        conn = self.get_connection()
-        return conn.connection
-
-    def get_connection(self):
-        if self.connection is None:
-            self.connection = self.engine.connect()
-        return self.connection
-
-    def end(self):
-        # Clean up session
-        self.session.close()
-        if self.connection:
-            self.connection.close()
-        self.engine.dispose()
 
 
 def filter_by_uuids(field, ids, validate=True, vendor=None):

@@ -625,6 +625,7 @@ class ChannelImport(object):
         return import_ran
 
     def end(self):
+        self.destination.session.commit()
         self.source.end()
         self.destination.end()
 

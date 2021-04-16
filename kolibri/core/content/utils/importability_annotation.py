@@ -63,13 +63,9 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
         )
         .where(ContentNodeTable.c.id == FileTable.c.contentnode_id)
     )
-    connection = bridge.get_connection()
-
     # start a transaction
-
-    trans = connection.begin()
-
-    connection.execute(
+    bridge.begin_transaction()
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             and_(
@@ -92,7 +88,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
 
     # Update all leaf ContentNodes to have num_coach_content to 1 or 0
     # Update all leaf ContentNodes to have on_device_resources to 1 or 0
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             and_(
@@ -109,7 +105,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
     )
 
     # Before starting set availability to False on all topics.
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(
             and_(
@@ -177,7 +173,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
     for level in range(node_depth, 0, -1):
 
         # Only modify topic availability here
-        connection.execute(
+        bridge.session.execute(
             ContentNodeTable.update()
             .where(
                 and_(
@@ -197,7 +193,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
             )
         )
 
-        level_stats = connection.execute(
+        level_stats = bridge.session.execute(
             select(
                 [
                     ContentNodeTable.c.id,
@@ -221,7 +217,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
                 "total_resources": stat[3] or 0,
             }
 
-    root_node_stats = connection.execute(
+    root_node_stats = bridge.session.execute(
         select(
             [
                 ContentNodeTable.c.id,
@@ -244,20 +240,19 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
     }
 
     # rollback the transaction to undo the temporary annotation
-    trans.rollback()
+    bridge.rollback_transaction()
 
     new_resource_stats = process_cache.get(
         CHANNEL_UPDATE_STATS_CACHE_KEY.format(channel_id)
     )
 
     if new_resource_stats and new_resource_stats.get("new_resource_ids"):
-
-        trans = connection.begin()
+        bridge.begin_transaction()
 
         # Here we are using the on_device_resources key to track 'newness'
         # set everything to false to start with.
 
-        connection.execute(
+        bridge.session.execute(
             ContentNodeTable.update()
             .where(ContentNodeTable.c.channel_id == channel_id)
             .values(available=False, on_device_resources=0)
@@ -272,7 +267,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
         ]
 
         while new_resource_ids:
-            connection.execute(
+            bridge.session.execute(
                 ContentNodeTable.update()
                 .where(
                     and_(
@@ -292,7 +287,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
         for level in range(node_depth, 0, -1):
 
             # Only modify topic availability here
-            connection.execute(
+            bridge.session.execute(
                 ContentNodeTable.update()
                 .where(
                     and_(
@@ -307,7 +302,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
                 .values(available=True, on_device_resources=on_device_num)
             )
 
-            level_stats = connection.execute(
+            level_stats = bridge.session.execute(
                 select(
                     [ContentNodeTable.c.id, ContentNodeTable.c.on_device_resources]
                 ).where(
@@ -325,7 +320,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
                     stats[key]["new_resource"] = True
                     stats[key]["num_new_resources"] = stat[1]
 
-        root_node_stats = connection.execute(
+        root_node_stats = bridge.session.execute(
             select([ContentNodeTable.c.id]).where(
                 and_(
                     ContentNodeTable.c.level == 0,
@@ -343,7 +338,7 @@ def get_channel_annotation_stats(channel_id, checksums=None):  # noqa
             )
 
         # rollback the transaction to undo the temporary annotation
-        trans.rollback()
+        bridge.rollback_transaction()
 
     if new_resource_stats and new_resource_stats.get("updated_resource_ids"):
         for key in new_resource_stats.get("updated_resource_ids"):

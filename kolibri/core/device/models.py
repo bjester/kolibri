@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.db import models
+from django.db.models.sql.subqueries import DeleteQuery
+from django.db.models.sql.subqueries import InsertQuery
 from morango.models import UUIDField
 
 from .utils import LANDING_PAGE_LEARN
@@ -12,6 +14,7 @@ from kolibri.core.auth.models import Facility
 from kolibri.core.auth.models import FacilityUser
 from kolibri.core.utils.cache import process_cache as cache
 from kolibri.plugins.app.utils import interface
+
 
 device_permissions_fields = ["is_superuser", "can_manage_content"]
 
@@ -169,6 +172,17 @@ class DeviceAppKey(models.Model):
 
 class SQLiteLock(models.Model):
     id = models.AutoField(primary_key=True)
+
+    @classmethod
+    def get_acquire_sql(cls):
+        query = InsertQuery(cls)
+        query.insert_values(cls._meta.local_concrete_fields, [SQLiteLock(id=2)])
+        return query.sql_with_params()[0]
+
+    @classmethod
+    def get_release_sql(cls):
+        query = cls.objects.filter(id=2).query.clone(DeleteQuery)
+        return query.sql_with_params()
 
     def save(self, *args, **kwargs):
         self.pk = 1

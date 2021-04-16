@@ -192,11 +192,10 @@ def get_new_resources_available_for_import(destination, channel_id):
     i = 0
 
     # start a transaction
-
-    trans = connection.begin()
+    bridge.begin_transaction()
 
     # Set everything to False to start with
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(ContentNodeTable.c.channel_id == channel_id)
         .values(available=False)
@@ -205,7 +204,7 @@ def get_new_resources_available_for_import(destination, channel_id):
     node_ids = current_resource_node_id_queryset[i : i + batch_size]
     while node_ids:
         # Set everything to False to start with
-        connection.execute(
+        bridge.session.execute(
             ContentNodeTable.update()
             .where(
                 and_(
@@ -236,7 +235,7 @@ def get_new_resources_available_for_import(destination, channel_id):
     )
 
     new_resource_nodes_total_size = (
-        connection.execute(
+        bridge.session.execute(
             # This does the first step in the many to many lookup for File
             select([func.sum(LocalFileTable.c.file_size)]).where(
                 LocalFileTable.c.id.in_(
@@ -278,7 +277,7 @@ def get_new_resources_available_for_import(destination, channel_id):
         for c in connection.execute(new_resource_node_ids_statement).fetchall()
     )
 
-    trans.rollback()
+    bridge.rollback_transaction()
 
     # Create a queryset for the content_ids of resources currently in this channel
     # we will slice this later in a while loop in order to efficiently process this
@@ -295,11 +294,10 @@ def get_new_resources_available_for_import(destination, channel_id):
     i = 0
 
     # start a transaction
-
-    trans = connection.begin()
+    bridge.begin_transaction()
 
     # Set everything to False to start with
-    connection.execute(
+    bridge.session.execute(
         ContentNodeTable.update()
         .where(ContentNodeTable.c.channel_id == channel_id)
         .values(available=False)
@@ -308,7 +306,7 @@ def get_new_resources_available_for_import(destination, channel_id):
     content_ids = current_resource_content_id_queryset[i : i + batch_size]
     while content_ids:
         # Set everything to False to start with
-        connection.execute(
+        bridge.session.execute(
             ContentNodeTable.update()
             .where(
                 and_(
@@ -339,10 +337,10 @@ def get_new_resources_available_for_import(destination, channel_id):
 
     new_resource_content_ids = list(
         coerce_key(c[0])
-        for c in connection.execute(new_resource_content_ids_statement).fetchall()
+        for c in bridge.session.execute(new_resource_content_ids_statement).fetchall()
     )
 
-    trans.rollback()
+    bridge.rollback_transaction()
 
     return (
         new_resource_node_ids,
@@ -358,7 +356,6 @@ def count_removed_resources(destination, channel_id):
     leaf nodes based on destination db leaf node content_ids.
     """
     bridge = Bridge(app_name=CONTENT_APP_NAME, sqlite_file_path=destination)
-    connection = bridge.get_connection()
     ContentNodeTable = bridge.get_table(ContentNode)
     resource_node_ids_statement = (
         select([ContentNodeTable.c.id])
@@ -375,7 +372,9 @@ def count_removed_resources(destination, channel_id):
 
     resource_node_ids = [
         coerce_key(cid[0])
-        for cid in connection.execute(resource_node_ids_statement.offset(i)).fetchall()
+        for cid in bridge.session.execute(
+            resource_node_ids_statement.offset(i)
+        ).fetchall()
     ]
 
     content_ids_after_upgrade = set()
@@ -398,7 +397,7 @@ def count_removed_resources(destination, channel_id):
         i += batch_size
         resource_node_ids = [
             coerce_key(cid[0])
-            for cid in connection.execute(
+            for cid in bridge.session.execute(
                 resource_node_ids_statement.offset(i)
             ).fetchall()
         ]
@@ -421,7 +420,6 @@ def get_automatically_updated_resources(destination, channel_id):
     Get the available node ids related to those missing file objects.
     """
     bridge = Bridge(app_name=CONTENT_APP_NAME, sqlite_file_path=destination)
-    connection = bridge.get_connection()
     ContentNodeTable = bridge.get_table(ContentNode)
     # SQL Alchemy reference to the file table - a mapping from
     # contentnodes to the files that they use
@@ -459,7 +457,9 @@ def get_automatically_updated_resources(destination, channel_id):
 
     contentnode_ids = [
         coerce_key(cid[0])
-        for cid in connection.execute(contentnode_ids_statement.offset(i)).fetchall()
+        for cid in bridge.session.execute(
+            contentnode_ids_statement.offset(i)
+        ).fetchall()
     ]
 
     while contentnode_ids:
@@ -479,7 +479,7 @@ def get_automatically_updated_resources(destination, channel_id):
 
         contentnode_ids = [
             coerce_key(cid[0])
-            for cid in connection.execute(
+            for cid in bridge.session.execute(
                 contentnode_ids_statement.offset(i)
             ).fetchall()
         ]
@@ -505,7 +505,7 @@ def get_automatically_updated_resources(destination, channel_id):
         )
 
         # This does the first step in the many to many lookup for File
-        updated_resources_total_size += connection.execute(
+        updated_resources_total_size += bridge.session.execute(
             select([func.sum(LocalFileTable.c.file_size)]).where(
                 LocalFileTable.c.id.in_(
                     select([LocalFileTable.c.id])
