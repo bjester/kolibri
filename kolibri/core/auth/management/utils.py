@@ -699,11 +699,15 @@ class MorangoSyncCommand(AsyncCommand):
             """
             :type transfer_session: morango.models.core.TransferSession
             """
-            progress = (
-                100
-                * transfer_session.records_transferred
-                / float(transfer_session.records_total)
-            )
+            if transfer_session.records_total > 0:
+                progress = (
+                    100
+                    * transfer_session.records_transferred
+                    / float(transfer_session.records_total)
+                )
+            else:
+                progress = 100
+
             tracker.update_progress(
                 increment=math.ceil(progress - tracker.progress),
                 message=stats_msg(transfer_session),
