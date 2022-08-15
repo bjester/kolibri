@@ -562,6 +562,10 @@
         message: 'The media is encrypted and we do not have the keys to decrypt it',
         context: 'Error message displayed in the media player.\n',
       },
+      //myFeatureMessage: {
+      //  message: 'My feature is a message!',
+      //  context: "This isn't real",
+      //},
     },
   };
 
