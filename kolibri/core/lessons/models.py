@@ -8,7 +8,9 @@ from kolibri.core.auth.models import AbstractFacilityDataModel
 from kolibri.core.auth.models import Collection
 from kolibri.core.auth.models import FacilityUser
 from kolibri.core.auth.permissions.base import RoleBasedPermissions
+from kolibri.core.auth.utils.sync import ClassroomPartitionFactory
 from kolibri.core.content.utils.assignment import ContentAssignmentManager
+from kolibri.core.device.utils import get_device_setting
 from kolibri.core.fields import DateTimeTzField
 from kolibri.core.fields import JSONField
 from kolibri.core.notifications.models import LearnerProgressNotification
@@ -65,7 +67,7 @@ class Lesson(AbstractFacilityDataModel):
     created_by = models.ForeignKey(
         FacilityUser,
         related_name="lessons_created",
-        blank=False,
+        blank=True,
         null=True,
         on_delete=models.CASCADE,
     )
@@ -119,7 +121,31 @@ class Lesson(AbstractFacilityDataModel):
         return self.cached_related_dataset_lookup("collection")
 
     def calculate_partition(self):
-        return self.dataset_id
+        """
+        Partition: ${dataset_id}:classroom:${collection_id}:${suffix}
+        """
+        filter_factory = ClassroomPartitionFactory(self.dataset_id)
+        filter_factory.set_coach_writeable()
+        classroom_collection = ClassroomPartitionFactory.get_classroom_collection(
+            collection=self.collection
+        )
+        return str(filter_factory.build(classroom_collection.id))
+
+    @classmethod
+    def deserialize(cls, dict_model):
+        """
+        Temporary hack to prevent deserialization of created_by_id
+
+        A proper implementation should leverage the new sync_filter in the enhancement of
+        https://github.com/learningequality/morango/issues/281
+        """
+        # this needs to check both for the setup wizard, and another reason why this is better
+        # handled with logic based off the sync_filter
+        if get_device_setting("subset_of_users_device") or not get_device_setting(
+            "is_provisioned"
+        ):
+            del dict_model["created_by_id"]
+        return super(Lesson, cls).deserialize(dict_model)
 
 
 class LessonAssignment(AbstractFacilityDataModel):
@@ -152,7 +178,7 @@ class LessonAssignment(AbstractFacilityDataModel):
     assigned_by = models.ForeignKey(
         FacilityUser,
         related_name="assigned_lessons",
-        blank=False,
+        blank=True,
         null=True,
         on_delete=models.CASCADE,
     )
@@ -203,7 +229,29 @@ class LessonAssignment(AbstractFacilityDataModel):
         )
 
     def calculate_partition(self):
-        return self.dataset_id
+        """
+        Partition: ${dataset_id}:classroom:${collection_id}:${suffix}
+        """
+        filter_factory = ClassroomPartitionFactory(self.dataset_id)
+        filter_factory.set_coach_writeable()
+        classroom_collection = ClassroomPartitionFactory.get_classroom_collection(
+            collection=self.collection
+        )
+        return str(filter_factory.build(classroom_collection.id))
+
+    @classmethod
+    def deserialize(cls, dict_model):
+        """
+        Temporary hack to prevent deserialization of assigned_by_id
+
+        A proper implementation should leverage the new sync_filter in the enhancement of
+        https://github.com/learningequality/morango/issues/281
+        """
+        if get_device_setting("subset_of_users_device") or not get_device_setting(
+            "is_provisioned"
+        ):
+            del dict_model["assigned_by_id"]
+        return super(LessonAssignment, cls).deserialize(dict_model)
 
 
 def individual_lesson_assignment_lookup(serialized_lesson):

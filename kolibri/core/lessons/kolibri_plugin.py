@@ -29,5 +29,11 @@ class SingleUserLessonCleanupOperation(KolibriSingleUserSyncOperation):
 
 @register_hook
 class LessonsSyncHook(FacilityDataSyncHook):
-    serializing_operations = [SingleUserLessonSerializeOperation()]
-    cleanup_operations = [SingleUserLessonCleanupOperation()]
+    serializing_operations = [
+        # Unset for testing classroom partition structure
+        # SingleUserLessonSerializeOperation()
+    ]
+    cleanup_operations = [
+        # Unset for testing classroom partition structure
+        # SingleUserLessonCleanupOperation()
+    ]
